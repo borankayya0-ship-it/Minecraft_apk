@@ -1,439 +1,499 @@
-name: Build APK
+#!/bin/bash
+set -e
 
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+echo "Proje dizinleri oluşturuluyor..."
+mkdir -p .github/workflows
+mkdir -p app/src/main/java/com/aitada/agent
+mkdir -p app/src/main/res/layout
+mkdir -p app/src/main/res/values
+mkdir -p app/src/main/res/xml
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+echo "settings.gradle yazılıyor..."
+cat > settings.gradle << 'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "AitadaAgent"
+include ':app'
+EOF
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+echo "build.gradle (root) yazılıyor..."
+cat > build.gradle << 'EOF'
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
+EOF
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.7'
+echo "gradle.properties yazılıyor..."
+cat > gradle.properties << 'EOF'
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+EOF
 
-      - name: Generate Android project
-        run: |
-          mkdir -p app/src/main/java/com/aitada/agent app/src/main/res/layout app/src/main/res/values app/src/main/res/xml
-          cat > settings.gradle <<'SETTINGS_EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "AitadaAgent"
-          include ':app'
-          SETTINGS_EOF
-          cat > build.gradle <<'ROOT_EOF'
-          plugins {
-              id 'com.android.application' version '8.5.2' apply false
-          }
-          ROOT_EOF
-          cat > gradle.properties <<'PROPS_EOF'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          PROPS_EOF
-          cat > app/build.gradle <<'APP_EOF'
-          plugins {
-              id 'com.android.application'
-          }
-          android {
-              namespace 'com.aitada.agent'
-              compileSdk 34
-              defaultConfig {
-                  applicationId "com.aitada.agent"
-                  minSdk 24
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-              }
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                  }
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-          APP_EOF
-          cat > app/src/main/AndroidManifest.xml <<'MANIFEST_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-              <application
-                  android:label="@string/app_name"
-                  android:allowBackup="true"
-                  android:usesCleartextTraffic="true"
-                  android:theme="@android:style/Theme.Material.Light.DarkActionBar">
-                  <activity android:name=".MainActivity" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-                  <service
-                      android:name=".AgentAccessibilityService"
-                      android:exported="true"
-                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-                      <intent-filter>
-                          <action android:name="android.accessibilityservice.AccessibilityService" />
-                      </intent-filter>
-                      <meta-data
-                          android:name="android.accessibilityservice"
-                          android:resource="@xml/accessibility_service_config" />
-                  </service>
-              </application>
-          </manifest>
-          MANIFEST_EOF
-          cat > app/src/main/res/values/strings.xml <<'STRINGS_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string name="app_name">Aitada Agent</string>
-              <string name="app_desc">Ekranı canlı okur ve görevleri yerine getirmek için dokunma hareketleri gerçekleştirir.</string>
-          </resources>
-          STRINGS_EOF
-          cat > app/src/main/res/xml/accessibility_service_config.xml <<'XMLCFG_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeAllMask"
-              android:accessibilityFeedbackType="feedbackGeneric"
-              android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds"
-              android:canPerformGestures="true"
-              android:canRetrieveWindowContent="true"
-              android:description="@string/app_desc"
-              android:notificationTimeout="100" />
-          XMLCFG_EOF
-          cat > app/src/main/res/layout/activity_main.xml <<'LAYOUT_EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:orientation="vertical"
-              android:padding="16dp">
-              <EditText android:id="@+id/etApiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API Anahtarı" android:inputType="textPassword" />
-              <EditText android:id="@+id/etBaseUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Base URL (örn. https://api.openai.com/v1)" android:inputType="textUri" />
-              <EditText android:id="@+id/etModel" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Model adı (örn. gpt-4o)" />
-              <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Bağlan / Test Et" />
-              <Button android:id="@+id/btnAccessibility" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Erişilebilirlik İzni Aç" />
-              <EditText android:id="@+id/etTask" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Görev (örn. ZArchiver aç, Download klasörüne gir)" />
-              <Button android:id="@+id/btnStart" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Görevi Başlat" />
-              <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
-                  <TextView android:id="@+id/tvLog" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:fontFamily="monospace" />
-              </ScrollView>
-          </LinearLayout>
-          LAYOUT_EOF
-          cat > app/src/main/java/com/aitada/agent/Cfg.java <<'CFG_EOF'
-          package com.aitada.agent;
+echo "app/build.gradle yazılıyor..."
+cat > app/build.gradle << 'EOF'
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'com.aitada.agent'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.aitada.agent"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    implementation 'org.json:json:20231013'
+}
+EOF
 
-          public class Cfg {
-              public String key = "";
-              public String url = "";
-              public String model = "";
-          }
-          CFG_EOF
-          cat > app/src/main/java/com/aitada/agent/AgentLog.java <<'LOG_EOF'
-          package com.aitada.agent;
+echo "AndroidManifest.xml yazılıyor..."
+cat > app/src/main/AndroidManifest.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <application
+        android:label="@string/app_name"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@android:style/Theme.Material.Light.DarkActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".AgentAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+    </application>
+</manifest>
+EOF
 
-          import java.util.ArrayList;
-          import java.util.List;
+echo "strings.xml yazılıyor..."
+cat > app/src/main/res/values/strings.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Aitada Agent</string>
+    <string name="app_desc">Ekranı canlı okur ve görevleri yerine getirmek için dokunma hareketleri gerçekleştirir.</string>
+</resources>
+EOF
 
-          public class AgentLog {
-              private static final List<String> LINES = new ArrayList<>();
+echo "accessibility_service_config.xml yazılıyor..."
+cat > app/src/main/res/xml/accessibility_service_config.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/app_desc"
+    android:notificationTimeout="100" />
+EOF
 
-              public static synchronized void add(String s) {
-                  LINES.add(s);
-                  if (LINES.size() > 300) LINES.remove(0);
-              }
+echo "activity_main.xml yazılıyor..."
+cat > app/src/main/res/layout/activity_main.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <EditText android:id="@+id/etApiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API Anahtarı" android:inputType="textPassword" />
+    <EditText android:id="@+id/etBaseUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Base URL (örn. https://api.openai.com/v1)" android:inputType="textUri" />
+    <EditText android:id="@+id/etModel" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Model adı (örn. gpt-4o)" />
+    <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Bağlan / Test Et" />
+    <Button android:id="@+id/btnAccessibility" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Erişilebilirlik İzni Aç" />
+    <EditText android:id="@+id/etTask" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Görev (örn. ZArchiver aç, Download klasörüne gir)" />
+    <Button android:id="@+id/btnStart" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Görevi Başlat" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <TextView android:id="@+id/tvLog" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:fontFamily="monospace" />
+    </ScrollView>
+</LinearLayout>
+EOF
 
-              public static synchronized List<String> copy() {
-                  return new ArrayList<>(LINES);
-              }
-          }
-          LOG_EOF
-          cat > app/src/main/java/com/aitada/agent/LlmClient.java <<'LLM_EOF'
-          package com.aitada.agent;
+echo "Cfg.java yazılıyor..."
+cat > app/src/main/java/com/aitada/agent/Cfg.java << 'EOF'
+package com.aitada.agent;
 
-          import java.io.BufferedReader;
-          import java.io.InputStreamReader;
-          import java.io.OutputStream;
-          import java.net.HttpURLConnection;
-          import java.net.URL;
-          import java.nio.charset.StandardCharsets;
+public class Cfg {
+    public String key = "";
+    public String url = "";
+    public String model = "";
+}
+EOF
 
-          import org.json.JSONArray;
-          import org.json.JSONObject;
+echo "AgentLog.java yazılıyor..."
+cat > app/src/main/java/com/aitada/agent/AgentLog.java << 'EOF'
+package com.aitada.agent;
 
-          public class LlmClient {
+import java.util.ArrayList;
+import java.util.List;
 
-              public static String endpoint(String base) {
-                  String u = base.trim();
-                  while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
-                  if (!u.contains("chat/completions")) u = u + "/chat/completions";
-                  return u;
-              }
+public class AgentLog {
+    private static final List<String> LINES = new ArrayList<>();
 
-              public static String complete(Cfg cfg, String system, String user) throws Exception {
-                  HttpURLConnection c = (HttpURLConnection) new URL(endpoint(cfg.url)).openConnection();
-                  c.setRequestMethod("POST");
-                  c.setConnectTimeout(20000);
-                  c.setReadTimeout(60000);
-                  c.setDoOutput(true);
-                  c.setRequestProperty("Content-Type", "application/json");
-                  c.setRequestProperty("Authorization", "Bearer " + cfg.key);
-                  JSONObject body = new JSONObject();
-                  body.put("model", cfg.model);
-                  body.put("temperature", 0);
-                  JSONArray msgs = new JSONArray();
-                  JSONObject m1 = new JSONObject();
-                  m1.put("role", "system");
-                  m1.put("content", system);
-                  msgs.put(m1);
-                  JSONObject m2 = new JSONObject();
-                  m2.put("role", "user");
-                  m2.put("content", user);
-                  msgs.put(m2);
-                  body.put("messages", msgs);
-                  byte[] data = body.toString().getBytes(StandardCharsets.UTF_8);
-                  OutputStream os = c.getOutputStream();
-                  os.write(data);
-                  os.close();
-                  int code = c.getResponseCode();
-                  BufferedReader br;
-                  if (code >= 200 && code < 300) {
-                      br = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
-                  } else {
-                      br = new BufferedReader(new InputStreamReader(c.getErrorStream(), StandardCharsets.UTF_8));
-                  }
-                  StringBuilder sb = new StringBuilder();
-                  String line;
-                  while ((line = br.readLine()) != null) sb.append(line);
-                  br.close();
-                  if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + sb.toString());
-                  JSONObject res = new JSONObject(sb.toString());
-                  return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
-              }
+    public static synchronized void add(String s) {
+        LINES.add(s);
+        if (LINES.size() > 300) LINES.remove(0);
+    }
 
-              public static String ping(Cfg cfg) {
-                  try {
-                      String r = complete(cfg, "Sen bir test asistanisin.", "Sadece PONG yaz.");
-                      return "Baglandi: " + r;
-                  } catch (Exception e) {
-                      return "Baglanti hatasi: " + e.getMessage();
-                  }
-              }
-          }
-          LLM_EOF
-          cat > app/src/main/java/com/aitada/agent/MainActivity.java <<'MAIN_EOF'
-          package com.aitada.agent;
+    public static synchronized List<String> copy() {
+        return new ArrayList<>(LINES);
+    }
+}
+EOF
 
-          import android.app.Activity;
-          import android.content.Intent;
-          import android.content.SharedPreferences;
-          import android.os.Bundle;
-          import android.os.Handler;
-          import android.os.Looper;
-          import android.provider.Settings;
-          import android.widget.Button;
-          import android.widget.EditText;
-          import android.widget.TextView;
-          import android.widget.Toast;
+echo "ScreenItem.java yazılıyor..."
+cat > app/src/main/java/com/aitada/agent/ScreenItem.java << 'EOF'
+package com.aitada.agent;
 
-          public class MainActivity extends Activity {
+import android.graphics.Rect;
 
-              private EditText etApiKey;
-              private EditText etBaseUrl;
-              private EditText etModel;
-              private EditText etTask;
-              private TextView tvLog;
-              private final Handler handler = new Handler(Looper.getMainLooper());
+public class ScreenItem {
+    public CharSequence text;
+    public CharSequence className;
+    public Rect rect;
 
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  setContentView(R.layout.activity_main);
-                  etApiKey = findViewById(R.id.etApiKey);
-                  etBaseUrl = findViewById(R.id.etBaseUrl);
-                  etModel = findViewById(R.id.etModel);
-                  etTask = findViewById(R.id.etTask);
-                  tvLog = findViewById(R.id.tvLog);
-                  Button btnConnect = findViewById(R.id.btnConnect);
-                  Button btnAccessibility = findViewById(R.id.btnAccessibility);
-                  Button btnStart = findViewById(R.id.btnStart);
-                  SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
-                  etApiKey.setText(p.getString("key", ""));
-                  etBaseUrl.setText(p.getString("url", "https://api.openai.com/v1"));
-                  etModel.setText(p.getString("model", "gpt-4o"));
-                  btnConnect.setOnClickListener(v -> new Thread(() -> {
-                      saveCfg();
-                      final String msg = LlmClient.ping(readCfg());
-                      handler.post(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show());
-                  }).start());
-                  btnAccessibility.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-                  btnStart.setOnClickListener(v -> {
-                      saveCfg();
-                      String task = etTask.getText().toString().trim();
-                      if (task.isEmpty()) {
-                          Toast.makeText(this, "Lutfen bir gorev yazin", Toast.LENGTH_SHORT).show();
-                          return;
-                      }
-                      if (!AgentAccessibilityService.isRunning()) {
-                          Toast.makeText(this, "Once erisilebilirlik hizmetini etkinlestirin", Toast.LENGTH_LONG).show();
-                          startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                          return;
-                      }
-                      AgentAccessibilityService.startTask(task);
-                      AgentLog.add("[UI] Gorev servise gonderildi.");
-                  });
-                  handler.post(this::refreshLog);
-              }
+    public ScreenItem(CharSequence text, CharSequence className, Rect rect) {
+        this.text = text;
+        this.className = className;
+        this.rect = rect;
+    }
+}
+EOF
 
-              private void saveCfg() {
-                  SharedPreferences.Editor e = getSharedPreferences("cfg", MODE_PRIVATE).edit();
-                  e.putString("key", etApiKey.getText().toString().trim());
-                  e.putString("url", etBaseUrl.getText().toString().trim());
-                  e.putString("model", etModel.getText().toString().trim());
-                  e.apply();
-              }
+echo "LlmClient.java yazılıyor..."
+cat > app/src/main/java/com/aitada/agent/LlmClient.java << 'EOF'
+package com.aitada.agent;
 
-              private Cfg readCfg() {
-                  SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
-                  Cfg c = new Cfg();
-                  c.key = p.getString("key", "");
-                  c.url = p.getString("url", "");
-                  c.model = p.getString("model", "");
-                  return c;
-              }
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
-              private void refreshLog() {
-                  StringBuilder sb = new StringBuilder();
-                  for (String s : AgentLog.copy()) {
-                      sb.append(s).append("\n");
-                  }
-                  tvLog.setText(sb.toString());
-                  handler.postDelayed(this::refreshLog, 600);
-              }
-          }
-          MAIN_EOF
-          cat > app/src/main/java/com/aitada/agent/AgentAccessibilityService.java <<'SERVICE_EOF'
-          package com.aitada.agent;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
-          import android.accessibilityservice.AccessibilityService;
-          import android.accessibilityservice.GestureDescription;
-          import android.content.Intent;
-          import android.graphics.Path;
-          import android.graphics.Rect;
-          import android.os.Bundle;
-          import android.view.accessibility.AccessibilityEvent;
-          import android.view.accessibility.AccessibilityNodeInfo;
+public class LlmClient {
 
-          import java.util.ArrayList;
-          import java.util.List;
+    public static String endpoint(String base) {
+        String u = base.trim();
+        while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
+        if (!u.contains("chat/completions")) u = u + "/chat/completions";
+        return u;
+    }
 
-          import org.json.JSONObject;
+    public static String complete(Cfg cfg, String system, String user) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(endpoint(cfg.url)).openConnection();
+        c.setRequestMethod("POST");
+        c.setConnectTimeout(20000);
+        c.setReadTimeout(60000);
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/json");
+        c.setRequestProperty("Authorization", "Bearer " + cfg.key);
+        JSONObject body = new JSONObject();
+        body.put("model", cfg.model);
+        body.put("temperature", 0);
+        JSONArray msgs = new JSONArray();
+        JSONObject m1 = new JSONObject();
+        m1.put("role", "system");
+        m1.put("content", system);
+        msgs.put(m1);
+        JSONObject m2 = new JSONObject();
+        m2.put("role", "user");
+        m2.put("content", user);
+        msgs.put(m2);
+        body.put("messages", msgs);
+        byte[] data = body.toString().getBytes(StandardCharsets.UTF_8);
+        OutputStream os = c.getOutputStream();
+        os.write(data);
+        os.close();
+        int code = c.getResponseCode();
+        BufferedReader br;
+        if (code >= 200 && code < 300) {
+            br = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
+        } else {
+            br = new BufferedReader(new InputStreamReader(c.getErrorStream(), StandardCharsets.UTF_8));
+        }
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = br.readLine()) != null) sb.append(line);
+        br.close();
+        if (code < 200 || code >= 300) throw new Exception("HTTP " + code + ": " + sb.toString());
+        JSONObject res = new JSONObject(sb.toString());
+        return res.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
+    }
 
-          public class AgentAccessibilityService extends AccessibilityService {
+    public static String ping(Cfg cfg) {
+        try {
+            String r = complete(cfg, "Sen bir test asistanisin.", "Sadece PONG yaz.");
+            return "Baglandi: " + r;
+        } catch (Exception e) {
+            return "Baglanti hatasi: " + e.getMessage();
+        }
+    }
+}
+EOF
 
-              private static AgentAccessibilityService instance;
-              private static volatile String pendingTask = null;
-              private volatile boolean running = false;
+echo "MainActivity.java yazılıyor..."
+cat > app/src/main/java/com/aitada/agent/MainActivity.java << 'EOF'
+package com.aitada.agent;
 
-              public static boolean isRunning() {
-                  return instance != null;
-              }
+import android.app.Activity;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.TextView;
+import android.widget.Toast;
 
-              public static void startTask(String task) {
-                  pendingTask = task;
-              }
+public class MainActivity extends Activity {
 
-              @Override
-              public void onServiceConnected() {
-                  super.onServiceConnected();
-                  instance = this;
-                  running = true;
-                  Thread worker = new Thread(this::loop, "agent-worker");
-                  worker.start();
-                  AgentLog.add("[Servis] Erisilebilirlik hizmeti baglandi.");
-              }
+    private EditText etApiKey;
+    private EditText etBaseUrl;
+    private EditText etModel;
+    private EditText etTask;
+    private TextView tvLog;
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
-              @Override
-              public void onAccessibilityEvent(AccessibilityEvent event) {
-              }
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        etApiKey = findViewById(R.id.etApiKey);
+        etBaseUrl = findViewById(R.id.etBaseUrl);
+        etModel = findViewById(R.id.etModel);
+        etTask = findViewById(R.id.etTask);
+        tvLog = findViewById(R.id.tvLog);
+        Button btnConnect = findViewById(R.id.btnConnect);
+        Button btnAccessibility = findViewById(R.id.btnAccessibility);
+        Button btnStart = findViewById(R.id.btnStart);
+        SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
+        etApiKey.setText(p.getString("key", ""));
+        etBaseUrl.setText(p.getString("url", "https://api.openai.com/v1"));
+        etModel.setText(p.getString("model", "gpt-4o"));
+        btnConnect.setOnClickListener(v -> new Thread(() -> {
+            saveCfg();
+            final String msg = LlmClient.ping(readCfg());
+            handler.post(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show());
+        }).start());
+        btnAccessibility.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        btnStart.setOnClickListener(v -> {
+            saveCfg();
+            String task = etTask.getText().toString().trim();
+            if (task.isEmpty()) {
+                Toast.makeText(this, "Lutfen bir gorev yazin", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (!AgentAccessibilityService.isRunning()) {
+                Toast.makeText(this, "Once erisilebilirlik hizmetini etkinlestirin", Toast.LENGTH_LONG).show();
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                return;
+            }
+            AgentAccessibilityService.startTask(task);
+            AgentLog.add("[UI] Gorev servise gonderildi.");
+        });
+        handler.post(this::refreshLog);
+    }
 
-              @Override
-              public void onInterrupt() {
-              }
+    private void saveCfg() {
+        SharedPreferences.Editor e = getSharedPreferences("cfg", MODE_PRIVATE).edit();
+        e.putString("key", etApiKey.getText().toString().trim());
+        e.putString("url", etBaseUrl.getText().toString().trim());
+        e.putString("model", etModel.getText().toString().trim());
+        e.apply();
+    }
 
-              @Override
-              public boolean onUnbind(Intent intent) {
-                  running = false;
-                  instance = null;
-                  return super.onUnbind(intent);
-              }
+    private Cfg readCfg() {
+        SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
+        Cfg c = new Cfg();
+        c.key = p.getString("key", "");
+        c.url = p.getString("url", "");
+        c.model = p.getString("model", "");
+        return c;
+    }
 
-              private void loop() {
-                  while (running) {
-                      String task = pendingTask;
-                      if (task != null) {
-                          pendingTask = null;
-                          runTask(task);
-                      }
-                      try {
-                          Thread.sleep(400);
-                      } catch (InterruptedException e) {
-                          return;
-                      }
-                  }
-              }
+    private void refreshLog() {
+        StringBuilder sb = new StringBuilder();
+        for (String s : AgentLog.copy()) {
+            sb.append(s).append("\n");
+        }
+        tvLog.setText(sb.toString());
+        handler.postDelayed(this::refreshLog, 600);
+    }
+}
+EOF
 
-              private Cfg readCfg() {
-                  android.content.SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
-                  Cfg c = new Cfg();
-                  c.key = p.getString("key", "");
-                  c.url = p.getString("url", "");
-                  c.model = p.getString("model", "");
-                  return c;
-              }
+echo "AgentAccessibilityService.java yazılıyor..."
+cat > app/src/main/java/com/aitada/agent/AgentAccessibilityService.java << 'EOF'
+package com.aitada.agent;
 
-              private void runTask(String task) {
-                  AgentLog.add("[Gorev] " + task);
-                  Cfg cfg = readCfg();
-                  String system = "Sen Android bir telefonu otonom kullanan yapay zeka ajanisin. "
-                          + "Sana gorev ve ekrandaki ogelerin listesi verilir. "
-                          + "Her adimda YALNIZCA tek bir JSON nesnesi dondur, baska hicbir sey yazma. "
-                          + "Gecerli komutlar: "
-                          + "{\"action\":\"click\",\"x\":123,\"y\":456} | "
-                          + "{\"action\":\"tap_index\",\"index\":0} | "
-                          + "{\"action\":\"swipe\",\"x1\":500,\"y1\":1500,\"x2\":500,\"y2\":400} | "
-                          + "{\"action\":\"type\",\"text\":\"metin\"} | "
-                          + "{\"action\":\"back\"} | {\"action\":\"home\"} | "
-                          + "{\"action\":\"launch\",\"package\":\"paket.adi\"} | "
-                          + "{\"action\":\"wait\"} | {\"action\":\"done\",\"summary\":\"aciklama\"}. "
-                          + "Bir ogeye dokunmak icin tap_index veya click kullan. "
-                          + "Gorev tamamlaninca done dondur.";
-                  String history = "";
-                  for (int step = 1; step <= 25; step++) {
-                      List<ScreenItem> items = captureScreen();
-                      StringBuilder sb = new StringBuilder();
-  
+import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
+import android.content.Intent;
+import android.graphics.Path;
+import android.graphics.Rect;
+import android.os.Bundle;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.json.JSONObject;
+
+public class AgentAccessibilityService extends AccessibilityService {
+
+    private static AgentAccessibilityService instance;
+    private static volatile String pendingTask = null;
+    private volatile boolean running = false;
+
+    public static boolean isRunning() {
+        return instance != null;
+    }
+
+    public static void startTask(String task) {
+        pendingTask = task;
+    }
+
+    @Override
+    public void onServiceConnected() {
+        super.onServiceConnected();
+        instance = this;
+        running = true;
+        Thread worker = new Thread(this::loop, "agent-worker");
+        worker.start();
+        AgentLog.add("[Servis] Erisilebilirlik hizmeti baglandi.");
+    }
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+    }
+
+    @Override
+    public void onInterrupt() {
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        running = false;
+        instance = null;
+        return super.onUnbind(intent);
+    }
+
+    private void loop() {
+        while (running) {
+            String task = pendingTask;
+            if (task != null) {
+                pendingTask = null;
+                runTask(task);
+            }
+            try {
+                Thread.sleep(400);
+            } catch (InterruptedException e) {
+                return;
+            }
+        }
+    }
+
+    private Cfg readCfg() {
+        android.content.SharedPreferences p = getSharedPreferences("cfg", MODE_PRIVATE);
+        Cfg c = new Cfg();
+        c.key = p.getString("key", "");
+        c.url = p.getString("url", "");
+        c.model = p.getString("model", "");
+        return c;
+    }
+
+    private void runTask(String task) {
+        AgentLog.add("[Gorev] " + task);
+        Cfg cfg = readCfg();
+        String system = "Sen Android bir telefonu otonom kullanan yapay zeka ajanisin. "
+                + "Sana gorev ve ekrandaki ogelerin listesi verilir. "
+                + "Her adimda YALNIZCA tek bir JSON nesnesi dondur, baska hicbir sey yazma. "
+                + "Gecerli komutlar: "
+                + "{\"action\":\"click\",\"x\":123,\"y\":456} | "
+                + "{\"action\":\"tap_index\",\"index\":0} | "
+                + "{\"action\":\"swipe\",\"x1\":500,\"y1\":1500,\"x2\":500,\"y2\":400} | "
+                + "{\"action\":\"type\",\"text\":\"metin\"} | "
+                + "{\"action\":\"back\"} | {\"action\":\"home\"} | "
+                + "{\"action\":\"launch\",\"package\":\"paket.adi\"} | "
+                + "{\"action\":\"wait\"} | {\"action\":\"done\",\"summary\":\"aciklama\"}. "
+                + "Bir ogeye dokunmak icin tap_index veya click kullan. "
+                + "Gorev tamamlaninca done dondur.";
+        
+        try {
+            String result = LlmClient.complete(cfg, system, "Gorev: " + task);
+            AgentLog.add("[Yapay Zeka] " + result);
+        } catch (Exception e) {
+            AgentLog.add("[Hata] " + e.getMessage());
+        }
+    }
+
+    private List<ScreenItem> captureScreen() {
+        List<ScreenItem> list = new ArrayList<>();
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            traverse(root, list);
+            root.recycle();
+        }
+        return list;
+    }
+
+    private void traverse(AccessibilityNodeInfo node, List<ScreenItem> list) {
+        if (node == null) return;
+        if (node.isClickable() || node.isEditable()) {
+            Rect rect = new Rect();
+            node.getBoundsInScreen(rect);
+            if (!rect.isEmpty()) {
+                list.add(new ScreenItem(node.getText(), node.getClassName(), rect));
+            }
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            traverse(node.getChild(i), list);
+        }
+    }
+}
+EOF
+
+echo "Tüm Java ve Gradle dosyaları başarıyla oluşturuldu!"
